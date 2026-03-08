@@ -1,1 +1,40 @@
 /* st-evermind styles */
+
+#evermind-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.evermind-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.evermind-row label {
+    font-size: 0.85em;
+    color: var(--SmartThemeBodyColor);
+}
+
+.evermind-row input[type="text"],
+.evermind-row input[type="password"],
+.evermind-row input[type="number"],
+.evermind-row select {
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    color: var(--SmartThemeBodyColor);
+    padding: 4px 8px;
+    border-radius: 4px;
+}
+
+#evermind-test-btn {
+    width: fit-content;
+    padding: 4px 12px;
+}
+
+#evermind-test-result {
+    font-size: 0.85em;
+    margin-left: 8px;
+}
