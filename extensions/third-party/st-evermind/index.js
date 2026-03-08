@@ -608,12 +608,103 @@ globalThis.everMindInterceptor = async function (chat, contextSize, abort, type)
     console.debug(`[${MODULE_NAME}] Injected ${memories.length} memories (type: ${type})`);
 };
 
+// ── 记忆可视化面板 ────────────────────────────────────────────
+
+const MEMORY_PANEL_HTML = `
+<div id="evermind-panel" style="display:none">
+  <div class="evermind-panel-header">
+    <span>EverMind 记忆层</span>
+    <button id="evermind-panel-close">x</button>
+  </div>
+  <div class="evermind-tabs">
+    <button class="evermind-tab active" data-tab="events">事件记忆</button>
+    <button class="evermind-tab" data-tab="canon">角色设定</button>
+  </div>
+  <div id="evermind-memory-list" class="evermind-list"></div>
+  <div class="evermind-footer">
+    <button id="evermind-refresh">刷新</button>
+  </div>
+</div>
+`;
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function refreshMemoryPanel(tab = 'events') {
+    const groupId = getCurrentGroupId();
+    const charGroupId = getCurrentCharGroupId();
+    const charName = getCurrentCharacterName();
+    if (!charName) return;
+
+    const queryMap = {
+        events: { query: charName, scope: 'both' },
+        canon: { query: '角色设定', scope: 'character' },
+    };
+
+    const { query, scope } = queryMap[tab] || queryMap.events;
+    const memories = await EverMindClient.searchMemories(query, groupId, charGroupId, scope);
+
+    const list = document.getElementById('evermind-memory-list');
+    if (!list) return;
+
+    list.innerHTML = memories.length
+        ? memories.map(m => `
+            <div class="evermind-memory-item">
+                <div class="evermind-memory-content">${escapeHtml(m.content)}</div>
+                ${m.timestamp ? `<div class="evermind-memory-time">${new Date(m.timestamp).toLocaleDateString('zh-CN')}</div>` : ''}
+            </div>
+          `).join('')
+        : '<div class="evermind-empty">暂无记忆</div>';
+}
+
+function mountMemoryPanel() {
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = MEMORY_PANEL_HTML;
+    document.body.appendChild(wrapper);
+
+    // 面板开关按钮
+    const btn = document.createElement('div');
+    btn.id = 'evermind-toggle-btn';
+    btn.title = 'EverMind 记忆';
+    btn.textContent = 'M';
+    btn.style.cssText = 'cursor:pointer;padding:4px 8px;font-size:14px;font-weight:bold;';
+    btn.addEventListener('click', () => {
+        const panel = document.getElementById('evermind-panel');
+        panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+        if (panel.style.display === 'flex') refreshMemoryPanel();
+    });
+    document.getElementById('extensionsMenuButton')?.parentNode?.appendChild(btn);
+
+    // Tab 切换
+    document.querySelectorAll('.evermind-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.evermind-tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            refreshMemoryPanel(tab.dataset.tab);
+        });
+    });
+
+    // 刷新
+    document.getElementById('evermind-refresh')?.addEventListener('click', () => {
+        const activeTab = document.querySelector('.evermind-tab.active')?.dataset.tab;
+        refreshMemoryPanel(activeTab);
+    });
+
+    document.getElementById('evermind-panel-close')?.addEventListener('click', () => {
+        document.getElementById('evermind-panel').style.display = 'none';
+    });
+}
+
 // ── 扩展入口 ─────────────────────────────────────────────────
 
 (async function init() {
     const { eventSource, event_types } = SillyTavern.getContext();
     eventSource.on(event_types.APP_READY, () => {
         mountSettingsPanel();
+        mountMemoryPanel();
         registerEventListeners();
         console.log(`[${MODULE_NAME}] Extension loaded`);
     });

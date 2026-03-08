@@ -38,3 +38,83 @@
     font-size: 0.85em;
     margin-left: 8px;
 }
+
+/* ── 记忆面板 ─────────────────────────────────── */
+
+#evermind-panel {
+    position: fixed;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 320px;
+    max-height: 70vh;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    flex-direction: column;
+    z-index: 9999;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.evermind-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+    font-weight: bold;
+}
+
+.evermind-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--SmartThemeBorderColor);
+}
+
+.evermind-tab {
+    flex: 1;
+    padding: 6px;
+    text-align: center;
+    font-size: 0.8em;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    color: var(--SmartThemeBodyColor);
+}
+
+.evermind-tab.active {
+    border-bottom: 2px solid var(--SmartThemeQuoteColor);
+}
+
+.evermind-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.evermind-memory-item {
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.evermind-memory-time {
+    font-size: 0.75em;
+    opacity: 0.6;
+    margin-top: 2px;
+}
+
+.evermind-footer {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border-top: 1px solid var(--SmartThemeBorderColor);
+}
+
+.evermind-empty {
+    text-align: center;
+    opacity: 0.5;
+    padding: 20px;
+}
