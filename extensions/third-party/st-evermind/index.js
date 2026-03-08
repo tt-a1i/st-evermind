@@ -534,6 +534,10 @@ async function handleMemoryInheritance(charName) {
     const s = getSettings();
     if (s.memory_inherit === 'never') return;
 
+    // 如果当前 chat 已经做过继承决策，不再重复询问
+    const meta = SillyTavern.getContext().chatMetadata;
+    if (meta[MODULE_NAME]?.inherited !== undefined) return;
+
     const charGroupId = buildCharGroupId(charName);
 
     if (s.memory_inherit === 'always') {
@@ -560,6 +564,11 @@ async function handleMemoryInheritance(charName) {
         await linkCharacterMemory(charName);
         toastr.success(`「${charName}」记得你们的历史`);
     } else {
+        // 记录"拒绝继承"决策，防止重复询问
+        const decisionMeta = SillyTavern.getContext().chatMetadata;
+        if (!decisionMeta[MODULE_NAME]) decisionMeta[MODULE_NAME] = {};
+        decisionMeta[MODULE_NAME].inherited = false;
+        SillyTavern.getContext().saveMetadata();
         toastr.info('全新开局，角色不记得之前的事');
     }
 }
@@ -575,12 +584,11 @@ async function handleChatChanged() {
     const char = ctx.characters[ctx.characterId];
     if (!char) return;
 
-    // 重置缓存（含继承字段）
+    // 重置 group_id 缓存（防御性刷新）
+    // 注意：不删除 char_group_id 和 inherited，它们是用户的继承决策，应在 chat 生命周期内持久保持
     const meta = SillyTavern.getContext().chatMetadata;
     if (meta[MODULE_NAME]) {
         delete meta[MODULE_NAME].group_id;
-        delete meta[MODULE_NAME].char_group_id;
-        delete meta[MODULE_NAME].inherited;
     }
 
     const groupId = getCurrentGroupId();
