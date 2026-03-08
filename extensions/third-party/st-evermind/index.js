@@ -19,6 +19,8 @@ const defaultSettings = Object.freeze({
 });
 
 // _settingsMerged 防止每次调用都 clone+merge（热路径优化）
+// 注意：合并只在首次运行，如果后续版本新增 defaultSettings 字段，
+// 老用户配置中不会自动补齐。需要时可重置此 flag 或做版本迁移。
 let _settingsMerged = false;
 
 function getSettings() {
