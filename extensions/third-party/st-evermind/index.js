@@ -399,10 +399,65 @@ function registerEventListeners() {
     eventSource.on(event_types.CHAT_CHANGED, handleChatChanged);
 }
 
-// ── generate_interceptor 占位，Phase B 实现 ──────────────────
+// ── 记忆注入 ──────────────────────────────────────────────────
+
+function formatMemoriesForInjection(memories) {
+    if (!memories.length) return null;
+    const lines = memories.map(m => {
+        const time = m.timestamp
+            ? `[${new Date(m.timestamp).toLocaleDateString('zh-CN')}] `
+            : '';
+        return `- ${time}${m.content}`;
+    });
+    return [
+        '[长期记忆 / Long-term Memory]',
+        ...lines,
+        '[记忆结束 / End of Memory]',
+    ].join('\n');
+}
 
 globalThis.everMindInterceptor = async function (chat, contextSize, abort, type) {
-    // TODO: Task 6
+    const s = getSettings();
+    if (!s.enabled) return;
+    if (['quiet', 'impersonate'].includes(type)) return;
+
+    const groupId = getCurrentGroupId();
+    if (!groupId) return;
+
+    const lastMsg = getLastUserMessage(chat);
+    if (!lastMsg) return;
+
+    // 最小版：只查 session scope，Phase C 升级为双 scope
+    const memories = await EverMindClient.searchMemories(
+        lastMsg, groupId, null, 'session'
+    );
+    if (!memories.length) return;
+
+    const memoryText = formatMemoriesForInjection(memories);
+    if (!memoryText) return;
+
+    if (s.inject_mode === 'system') {
+        chat.unshift({
+            is_user: false,
+            is_system: true,
+            name: 'Memory',
+            send_date: Date.now(),
+            mes: memoryText,
+        });
+    } else {
+        let insertAt = 0;
+        for (let i = chat.length - 1; i >= 0; i--) {
+            if (chat[i].is_user) { insertAt = i; break; }
+        }
+        chat.splice(insertAt, 0, {
+            is_user: false,
+            name: 'Memory',
+            send_date: Date.now(),
+            mes: memoryText,
+        });
+    }
+
+    console.debug(`[${MODULE_NAME}] Injected ${memories.length} memories (type: ${type})`);
 };
 
 // ── 扩展入口 ─────────────────────────────────────────────────
