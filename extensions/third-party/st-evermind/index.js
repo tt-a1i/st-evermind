@@ -299,6 +299,10 @@ const SETTINGS_HTML = `
     <button id="evermind-test-btn">测试连接</button>
     <span id="evermind-test-result"></span>
   </div>
+  <div class="evermind-row" style="flex-direction:row;gap:8px;margin-top:4px;">
+    <button id="evermind-clear-session">清除当前对话记忆</button>
+    <button id="evermind-clear-char">清除角色全部记忆</button>
+  </div>
 </div>
 `;
 
@@ -359,6 +363,29 @@ function bindSettingsEvents() {
             result.textContent = `❌ ${e.message}`;
             result.style.color = 'salmon';
         }
+    });
+
+    // 清除记忆按钮
+    document.getElementById('evermind-clear-session')?.addEventListener('click', async () => {
+        const groupId = getCurrentGroupId();
+        if (!groupId) { toastr.warning('没有选中对话'); return; }
+        if (!window.confirm('确定清除当前对话的记忆？')) return;
+        await EverMindClient.deleteMemories(groupId);
+        toastr.success('当前对话记忆已清除');
+    });
+
+    document.getElementById('evermind-clear-char')?.addEventListener('click', async () => {
+        const charGroupId = getCurrentCharGroupId();
+        const charName = getCurrentCharacterName();
+        if (!charGroupId) { toastr.warning('没有选中角色'); return; }
+        if (!window.confirm(`确定清除「${charName}」的全部记忆？此操作不可撤销。`)) return;
+        await EverMindClient.deleteMemories(charGroupId);
+        const s = getSettings();
+        if (s._cardHashes?.[charName]) {
+            delete s._cardHashes[charName];
+            SillyTavern.getContext().saveSettingsDebounced();
+        }
+        toastr.success(`「${charName}」的全部记忆已清除`);
     });
 }
 
@@ -438,9 +465,8 @@ const ROLEPLAY_KEYWORDS = [
 ];
 
 function isKeyRoleplayMessage(text) {
-    return ROLEPLAY_KEYWORDS.some(kw =>
-        text.toLowerCase().includes(kw.toLowerCase())
-    );
+    const lower = text.toLowerCase();
+    return ROLEPLAY_KEYWORDS.some(kw => lower.includes(kw));
 }
 
 // ── 消息写回 ──────────────────────────────────────────────────
@@ -869,7 +895,7 @@ async function refreshMemoryPanel(tab = 'events') {
 function mountMemoryPanel() {
     const wrapper = document.createElement('div');
     wrapper.innerHTML = MEMORY_PANEL_HTML;
-    document.body.appendChild(wrapper);
+    document.body.appendChild(wrapper.firstElementChild);
 
     // 面板开关按钮
     const btn = document.createElement('div');

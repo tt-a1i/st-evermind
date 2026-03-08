@@ -29,7 +29,9 @@
     border-radius: 4px;
 }
 
-#evermind-test-btn {
+#evermind-test-btn,
+#evermind-clear-session,
+#evermind-clear-char {
     width: fit-content;
     padding: 4px 12px;
 }
