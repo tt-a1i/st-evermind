@@ -356,6 +356,66 @@ function mountSettingsPanel() {
     bindSettingsEvents();
 }
 
+// ── 角色卡写入（角色级幂等）──────────────────────────────────
+
+function simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return hash.toString(36);
+}
+
+async function writeCharacterCardToMemory(charGroupId, character) {
+    const fields = [
+        { key: 'description', label: '角色设定' },
+        { key: 'personality', label: '性格' },
+        { key: 'scenario', label: '场景背景' },
+    ];
+
+    const cardContent = fields.map(f => character[f.key]?.trim() || '').join('|');
+    const cardHash = simpleHash(cardContent);
+
+    // 角色级幂等：hash 存在 extensionSettings，跨所有 chat 共享
+    const s = getSettings();
+    if (!s._cardHashes) s._cardHashes = {};
+    if (s._cardHashes[character.name] === cardHash) {
+        console.debug(`[${MODULE_NAME}] Character card unchanged, skip write`);
+        return;
+    }
+
+    for (const f of fields) {
+        const value = character[f.key]?.trim();
+        if (!value) continue;
+        await EverMindClient.writeMessage({
+            is_user: false,
+            name: character.name,
+            send_date: Date.now(),
+            mes: `[${f.label}] ${value}`,
+        }, charGroupId, character.name, { flush: true });
+    }
+
+    s._cardHashes[character.name] = cardHash;
+    SillyTavern.getContext().saveSettingsDebounced();
+    console.debug(`[${MODULE_NAME}] Character card written:`, character.name);
+}
+
+// ── 关键消息检测 ──────────────────────────────────────────────
+
+const ROLEPLAY_KEYWORDS = [
+    '记住', '设定', '规则', '世界观', '你是', '你的身份',
+    '背景', '约定', '不能', '禁止', '一定要', '永远',
+    'remember', 'setting', 'rule', 'you are', 'your role',
+    'always', 'never', 'must',
+];
+
+function isKeyRoleplayMessage(text) {
+    return ROLEPLAY_KEYWORDS.some(kw =>
+        text.toLowerCase().includes(kw.toLowerCase())
+    );
+}
+
 // ── 消息写回 ──────────────────────────────────────────────────
 
 async function handleMessageWriteback(messageIndex) {
@@ -370,7 +430,21 @@ async function handleMessageWriteback(messageIndex) {
     const message = ctx.chat[messageIndex];
     if (!message?.mes) return;
 
-    await EverMindClient.writeMessage(message, groupId, charName);
+    const isKey = message.is_user && isKeyRoleplayMessage(message.mes);
+
+    // 写入当前会话 group
+    await EverMindClient.writeMessage(message, groupId, charName, { flush: isKey });
+
+    // 关键设定额外写入角色维度 group（跨会话存活）
+    if (isKey) {
+        const charGroupId = getCurrentCharGroupId();
+        if (charGroupId) {
+            await EverMindClient.writeMessage(
+                message, charGroupId, charName, { flush: true }
+            );
+            toastr.info('关键设定已存入长期记忆', '', { timeOut: 2000 });
+        }
+    }
 }
 
 async function handleChatChanged() {
@@ -390,6 +464,12 @@ async function handleChatChanged() {
 
     const groupId = getCurrentGroupId();
     await EverMindClient.upsertConversationMeta(groupId, char.name);
+
+    // 角色卡写入（带幂等保护）
+    const charGroupId = getCurrentCharGroupId();
+    if (charGroupId) {
+        await writeCharacterCardToMemory(charGroupId, char);
+    }
 }
 
 function registerEventListeners() {
