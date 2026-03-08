@@ -1,0 +1,12 @@
+{
+    "display_name": "EverMind Memory",
+    "loading_order": 10,
+    "js": "index.js",
+    "css": "style.css",
+    "author": "tt-a1i",
+    "version": "0.1.0",
+    "homePage": "https://github.com/tt-a1i/st-evermind",
+    "auto_update": false,
+    "generate_interceptor": "everMindInterceptor",
+    "minimum_client_version": "1.12.0"
+}
