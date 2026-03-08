@@ -30,6 +30,208 @@ function getSettings() {
     return ctx.extensionSettings[MODULE_NAME];
 }
 
+// ── group_id 与上下文工具 ─────────────────────────────────────
+
+function sanitize(s) {
+    return s.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, '_').slice(0, 40);
+}
+
+function buildGroupId(charName, chatFile) {
+    return `st_${sanitize(charName)}_${sanitize(chatFile)}`;
+}
+
+function buildCharGroupId(charName) {
+    return `st_char_${sanitize(charName)}`;
+}
+
+function getCurrentGroupId() {
+    const ctx = SillyTavern.getContext();
+    if (ctx.characterId === undefined) return null;
+    const char = ctx.characters[ctx.characterId];
+    if (!char) return null;
+    const meta = SillyTavern.getContext().chatMetadata;
+    if (!meta[MODULE_NAME]) meta[MODULE_NAME] = {};
+    if (!meta[MODULE_NAME].group_id) {
+        const chatFile = meta.file_name || 'default';
+        meta[MODULE_NAME].group_id = buildGroupId(char.name, chatFile);
+        SillyTavern.getContext().saveMetadata();
+    }
+    return meta[MODULE_NAME].group_id;
+}
+
+function getCurrentCharGroupId() {
+    const ctx = SillyTavern.getContext();
+    if (ctx.characterId === undefined) return null;
+    const char = ctx.characters[ctx.characterId];
+    if (!char) return null;
+    return buildCharGroupId(char.name);
+}
+
+function getCurrentCharacterName() {
+    const ctx = SillyTavern.getContext();
+    if (ctx.characterId === undefined) return null;
+    return ctx.characters[ctx.characterId]?.name || null;
+}
+
+function getLastUserMessage(chat) {
+    for (let i = chat.length - 1; i >= 0; i--) {
+        if (chat[i].is_user && chat[i].mes) return chat[i].mes;
+    }
+    return '';
+}
+
+// ── EverMind HTTP 客户端 ──────────────────────────────────────
+
+const EverMindClient = {
+
+    _headers() {
+        const s = getSettings();
+        const h = { 'Content-Type': 'application/json' };
+        if (s.api_key) h['Authorization'] = `Bearer ${s.api_key}`;
+        return h;
+    },
+
+    _url(path = '') {
+        return `${getSettings().api_base_url}${API_BASE}${path}`;
+    },
+
+    async writeMessage(stMessage, groupId, charName, { flush = false } = {}) {
+        const s = getSettings();
+        const isUser = stMessage.is_user;
+        const payload = {
+            message_id: `st_${stMessage.send_date || Date.now()}_${isUser ? s.user_id : 'char'}_${Math.random().toString(36).slice(2, 6)}`,
+            create_time: new Date(stMessage.send_date || Date.now()).toISOString(),
+            sender: isUser ? s.user_id : charName,
+            sender_name: isUser ? (stMessage.name || s.user_id) : charName,
+            role: isUser ? 'user' : 'assistant',
+            content: stMessage.mes,
+            group_id: groupId,
+            group_name: charName,
+            refer_list: [],
+        };
+        if (flush) payload.flush = true;
+
+        try {
+            const res = await fetch(this._url(''), {
+                method: 'POST',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            console.debug(`[${MODULE_NAME}] writeMessage:`, data.result?.status_info);
+            return data;
+        } catch (e) {
+            console.error(`[${MODULE_NAME}] writeMessage failed:`, e.message);
+            return null;
+        }
+    },
+
+    async searchMemories(query, groupId, charGroupId, scope = 'both') {
+        const s = getSettings();
+        const results = [];
+
+        const doSearch = async (gid) => {
+            const payload = {
+                query,
+                user_id: s.user_id,
+                group_id: gid,
+                retrieve_method: 'hybrid',
+                memory_types: ['episodic_memory', 'profile', 'event_log'],
+                top_k: s.inject_limit,
+                include_metadata: true,
+            };
+            try {
+                const res = await fetch(this._url('/search'), {
+                    method: 'POST',
+                    headers: this._headers(),
+                    body: JSON.stringify(payload),
+                });
+                if (!res.ok) return [];
+                const data = await res.json();
+                return this._flattenResults(data.result?.memories || []);
+            } catch (e) {
+                console.error(`[${MODULE_NAME}] search failed (group: ${gid}):`, e.message);
+                return [];
+            }
+        };
+
+        if (scope === 'session' || scope === 'both') {
+            results.push(...await doSearch(groupId));
+        }
+        if ((scope === 'character' || scope === 'both') && charGroupId) {
+            results.push(...await doSearch(charGroupId));
+        }
+
+        const seen = new Set();
+        return results
+            .filter(m => {
+                if (seen.has(m.content)) return false;
+                seen.add(m.content);
+                return true;
+            })
+            .sort((a, b) => b.score - a.score)
+            .slice(0, s.inject_limit);
+    },
+
+    _flattenResults(memories) {
+        const flat = [];
+        for (const group of memories) {
+            for (const [type, items] of Object.entries(group)) {
+                for (const item of items) {
+                    flat.push({
+                        type,
+                        content: item.content || item.summary || '',
+                        timestamp: item.timestamp || '',
+                        score: item.score || 0,
+                    });
+                }
+            }
+        }
+        return flat;
+    },
+
+    async upsertConversationMeta(groupId, charName) {
+        const s = getSettings();
+        const payload = {
+            version: '1.0.0',
+            scene: 'assistant',
+            scene_desc: { description: `SillyTavern roleplay with ${charName}`, type: 'roleplay' },
+            name: charName,
+            group_id: groupId,
+            created_at: new Date().toISOString(),
+            user_details: {
+                [s.user_id]: { full_name: s.user_id, role: 'user' },
+                [charName]: { full_name: charName, role: 'assistant', custom_role: 'Character' },
+            },
+            tags: ['sillytavern', 'roleplay'],
+        };
+        try {
+            const res = await fetch(this._url('/conversation-meta'), {
+                method: 'POST',
+                headers: this._headers(),
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            console.debug(`[${MODULE_NAME}] conversation-meta upserted for`, groupId);
+        } catch (e) {
+            console.error(`[${MODULE_NAME}] upsertConversationMeta failed:`, e.message);
+        }
+    },
+
+    async deleteMemories(groupId) {
+        try {
+            await fetch(this._url(''), {
+                method: 'DELETE',
+                headers: this._headers(),
+                body: JSON.stringify({ group_id: groupId }),
+            });
+        } catch (e) {
+            console.error(`[${MODULE_NAME}] delete failed:`, e.message);
+        }
+    },
+};
+
 // ── 设置面板 ──────────────────────────────────────────────────
 
 const SETTINGS_HTML = `
