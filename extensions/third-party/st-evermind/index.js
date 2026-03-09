@@ -8,7 +8,7 @@ const API_BASE = '/api/v1/memories';
 
 const defaultSettings = Object.freeze({
     enabled: false,
-    api_base_url: 'http://localhost:1995',
+    api_base_url: 'https://api.evermind.ai',
     api_key: '',
     user_id: 'st_user',
     inject_limit: 6,
