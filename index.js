@@ -9,7 +9,6 @@ const API_BASE = '/api/v0/memories';
 const defaultSettings = Object.freeze({
     enabled: false,
     api_base_url: 'https://api.evermind.ai',
-    proxy_port: 7721,
     api_key: '',
     user_id: 'st_user',
     inject_limit: 6,
@@ -102,8 +101,10 @@ const EverMindClient = {
     },
 
     _url(path = '') {
-        const s = getSettings();
-        return `http://127.0.0.1:${s.proxy_port || 7721}${API_BASE}${path}`;
+        const target = encodeURIComponent(
+            `${getSettings().api_base_url}${API_BASE}${path}`
+        );
+        return `/proxy?url=${target}`;
     },
 
     async writeMessage(stMessage, groupId, charName, { flush = false } = {}) {
@@ -257,12 +258,8 @@ const SETTINGS_HTML = `
     </label>
   </div>
   <div class="evermind-row">
-    <label>API 地址 <small>（仅显示，实际请求走本地代理）</small></label>
-    <input type="text" id="evermind-api-url" placeholder="https://api.evermind.ai" readonly />
-  </div>
-  <div class="evermind-row">
-    <label>代理端口 <small>（proxy.js 的启动端口，默认 7721）</small></label>
-    <input type="number" id="evermind-proxy-port" min="1024" max="65535" />
+    <label>API 地址</label>
+    <input type="text" id="evermind-api-url" placeholder="https://api.evermind.ai" />
   </div>
   <div class="evermind-row">
     <label>API Key <small>(明文存储，仅用于演示)</small></label>
@@ -318,7 +315,6 @@ function loadSettingsUI() {
     const s = getSettings();
     document.getElementById('evermind-enabled').checked = s.enabled;
     document.getElementById('evermind-api-url').value = s.api_base_url;
-    document.getElementById('evermind-proxy-port').value = s.proxy_port;
     document.getElementById('evermind-api-key').value = s.api_key;
     document.getElementById('evermind-user-id').value = s.user_id;
     document.getElementById('evermind-inject-limit').value = s.inject_limit;
@@ -352,7 +348,6 @@ function bindSettingsEvents() {
         });
     }
     bind('evermind-api-url', 'api_base_url');
-    bind('evermind-proxy-port', 'proxy_port', Number);
     bind('evermind-api-key', 'api_key');
     bind('evermind-user-id', 'user_id');
     bind('evermind-inject-limit', 'inject_limit', Number);
@@ -361,34 +356,24 @@ function bindSettingsEvents() {
     bind('evermind-inherit', 'memory_inherit');
     bind('evermind-growth', 'growth_enabled');
 
-    // 测试连接：两步验证（代理在线 → EverMind 连通）
+    // 测试连接：通过 ST 内置代理测试 EverMind API
     document.getElementById('evermind-test-btn').addEventListener('click', async () => {
         const result = document.getElementById('evermind-test-result');
-        const s = getSettings();
-        const proxyBase = `http://127.0.0.1:${s.proxy_port || 7721}`;
-
-        // Step 1：代理是否在线
-        result.textContent = '检查代理...';
+        result.textContent = '连接中...';
         result.style.color = '';
         try {
-            await fetch(`${proxyBase}${API_BASE}`, { method: 'OPTIONS' });
-        } catch (e) {
-            result.textContent = '❌ 代理未启动，请先运行 node proxy/proxy.js';
-            result.style.color = 'salmon';
-            return;
-        }
-
-        // Step 2：EverMind API 连通性
-        result.textContent = '测试 EverMind...';
-        try {
-            const res = await fetch(`${proxyBase}${API_BASE}?user_id=test&limit=1`, {
-                headers: EverMindClient._headers(),
-            });
+            const res = await fetch(
+                EverMindClient._url('?user_id=test&limit=1'),
+                { headers: EverMindClient._headers() }
+            );
             if (res.ok) {
                 result.textContent = '✅ 连接成功';
                 result.style.color = 'lightgreen';
             } else if (res.status === 401) {
                 result.textContent = '❌ API Key 无效';
+                result.style.color = 'salmon';
+            } else if (res.status === 404) {
+                result.textContent = '❌ ST 代理未开启，请在 config.yaml 中设置 enableCorsProxy: true';
                 result.style.color = 'salmon';
             } else {
                 result.textContent = `❌ EverMind 返回 HTTP ${res.status}`;
@@ -545,7 +530,7 @@ async function handleMessageWriteback(messageIndex) {
 async function checkHasMemory(charGroupId) {
     try {
         const res = await fetch(
-            `${getSettings().api_base_url}${API_BASE}?group_id=${charGroupId}&limit=1`,
+            EverMindClient._url(`?group_id=${charGroupId}&limit=1`),
             { headers: EverMindClient._headers() }
         );
         if (!res.ok) return false;

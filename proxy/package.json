@@ -1,9 +1,0 @@
-{
-    "name": "st-evermind-proxy",
-    "version": "1.0.0",
-    "type": "module",
-    "description": "Local proxy for st-evermind extension",
-    "scripts": {
-        "start": "node proxy.js"
-    }
-}
