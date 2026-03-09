@@ -12,7 +12,7 @@ SillyTavern 第三方扩展，通过 [EverMind](https://github.com/EverMind-ai) 
 
 | 设置项 | 说明 | 默认值 |
 |--------|------|--------|
-| API 地址 | EverMind 服务地址 | `http://localhost:8080` |
+| API 地址 | EverMind 服务地址 | `https://api.evermind.ai` |
 | API Key | EverMind API 密钥 | 空 |
 | User ID | 用户标识 | `default_user` |
 | 注入条数 | 每次生成注入多少条记忆 | `5` |
