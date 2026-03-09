@@ -4,7 +4,7 @@
 // ============================================================
 
 const MODULE_NAME = 'st_evermind';
-const API_BASE = '/api/v1/memories';
+const API_BASE = '/api/v0/memories';
 
 const defaultSettings = Object.freeze({
     enabled: false,
